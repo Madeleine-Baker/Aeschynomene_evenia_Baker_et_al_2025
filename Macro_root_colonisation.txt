@@ -1,0 +1,111 @@
+//analyssi of infected roots sections. aquisiotion in brightfield, autofluorescence UV DAPI band pass and WGA-488 staining 
+//RUN the macro : clean opened images and ROI manager then ask user to open images to analyze
+//user open the 2 images (BF+ blue-green image)
+//calibration for nikon3 10x objective
+// renamme image dependaning in image title nomenclation
+//user have to define central cylinder with magic wang (dialog box) on bleu/green image
+//automatic detection of cut border (brightfield image) and erosion to remove grenne autofluorescence of cuticule
+//remove green autofluorescence by substractring blue autofluo to keep only green WGA staining
+//hyphe quantification on green image: counting number of hyphes sections on cortex only
+//autosave results = cut size / central cylinder size / hyphe surface 
+// autosave ROImanager
+//			ROI0 = central cylinder
+//			ROI1 = cut
+//			ROI2 = global hyphes selection
+
+run("Close All");
+roiManager("reset");
+waitForUser("open images", "open bf and fluo images to analyzed");
+//run("Clear Results");
+
+run("Set Measurements...", "area display redirect=None decimal=3");
+roiManager("reset");
+Stack.setXUnit("um");
+run("Properties...", "channels=1 slices=1 frames=1 pixel_width=0.7246339 pixel_height=0.7246339 voxel_depth=0.7246339 global");
+
+
+dir=File.directory();
+ni=nImages();
+
+for (i = 1; i <= ni; i++)
+	{
+	selectImage(i);
+	tit=getTitle();
+	if(tit.contains("-BF"))
+		{
+		tbf=getTitle();
+		rename("bf");
+		}	
+else
+		{
+		tfl=getTitle();
+		rename("fluo");
+		}
+	}
+
+selectImage("fluo");
+run("Duplicate...", "title=[fluo bis]");
+
+run("Wand Tool...", "tolerance=20 mode=Legacy");
+waitForUser("ccentral", "select cylindre central");
+//use magic wang to select central cylinder by clicking on UV border
+roiManager("Add");						//roi 0 = c.central
+roiManager("select", 0);
+roiManager("rename", "central cylinder");
+setBackgroundColor(0, 0, 0);
+run("Clear", "slice");
+
+
+//automatic detection of cut border on brightfield image
+selectImage("bf");
+run("8-bit");
+setThreshold(0, 216, "raw");
+//setThreshold(0, 216);
+setOption("BlackBackground", false);
+run("Convert to Mask");
+run("Fill Holes");
+run("Erode");			//to remove autofluorescence cuticule 
+run("Erode");
+run("Erode");
+run("Erode");
+setAutoThreshold("Default");
+run("Create Selection");
+roiManager("Add");				//roi 1 = coupe entiere
+roiManager("select", 1);
+roiManager("rename", "coupe");
+
+//remove green autofluorescence by substractring blue autofluo to keep only green WGA staining
+selectWindow("fluo bis");
+run("Split Channels");
+selectImage("fluo bis (red)");
+close();
+imageCalculator("Subtract create", "fluo bis (green)","fluo bis (blue)");     
+
+roiManager("select", 1);   
+run("Clear Outside");	   
+roiManager("select", 0);   
+run("Clear");	
+
+//hyphe surface measurement on green image
+setThreshold(43, 255, "raw");
+//setThreshold(73, 255);
+setOption("BlackBackground", false);
+run("Convert to Mask");
+run("Fill Holes");
+run("Analyze Particles...", "size=0-500 show=Masks");		//use nanalyze particules to sort interesting ROI
+setAutoThreshold("Default")									//create a global hyphe selection by autothreshoding
+run("Create Selection");
+roiManager("Add");				//roi 2 = les hyphes
+roiManager("select", 2);
+roiManager("rename", "hyphe");
+
+//save ROI manager,measurements,and show detected hyphe on fluorecence image
+selectWindow("fluo");
+rename(tit);
+
+roiManager("Select", newArray(0,1,2));
+roiManager("save", dir+tfl+".zip");
+roiManager("measure");
+saveAs("results", dir+tfl+".csv");
+
+roiManager("select", 2);
